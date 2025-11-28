@@ -337,330 +337,178 @@ st.session_state.code = code_input
 st.markdown("---")
 
 # BOTTOM: Output Panel
-# Tabs for Output
-tab_console, tab_problems, tab_terminal, tab_ai = st.tabs(["OUTPUT", "PROBLEMS", "TERMINAL", "AI ASSISTANT"])
-
 # Initialize logs variable
 logs = ""
 
 if st.session_state.run_trigger:
-    # --- OUTPUT TAB (Execution Result) ---
-    with tab_console:
-        st.markdown("#### Compilation Output")
-        
-        # Create a placeholder that we'll update progressively
-        output_placeholder = st.empty()
-        output_lines = []
-        syntax_error = None
-        analyzer = None
-        risks = []
-        
-        def update_output():
-            """Update the output display"""
-            if syntax_error:
-                output_placeholder.markdown(f'<div class="console-box" style="color: #ff6b6b;">{"<br>".join(output_lines)}</div>', unsafe_allow_html=True)
-            elif analyzer and analyzer.errors:
-                output_placeholder.markdown(f'<div class="console-box" style="color: #ff6b6b;">{"<br>".join(output_lines)}</div>', unsafe_allow_html=True)
-            else:
-                output_placeholder.markdown(f'<div class="console-box">{"<br>".join(output_lines)}</div>', unsafe_allow_html=True)
-        
-        # Step 1: Lexer Check
-        output_lines.append("Lexer...")
+    # --- OUTPUT (Execution Result) ---
+    st.markdown("#### Compilation Output")
+    
+    # Create a placeholder that we'll update progressively
+    output_placeholder = st.empty()
+    output_lines = []
+    syntax_error = None
+    analyzer = None
+    risks = []
+    
+    def update_output():
+        """Update the output display"""
+        if syntax_error:
+            output_placeholder.markdown(f'<div class="console-box" style="color: #ff6b6b;">{"<br>".join(output_lines)}</div>', unsafe_allow_html=True)
+        elif analyzer and analyzer.errors:
+            output_placeholder.markdown(f'<div class="console-box" style="color: #ff6b6b;">{"<br>".join(output_lines)}</div>', unsafe_allow_html=True)
+        else:
+            output_placeholder.markdown(f'<div class="console-box">{"<br>".join(output_lines)}</div>', unsafe_allow_html=True)
+    
+    # Step 1: Lexer Check
+    output_lines.append("Lexer...")
+    update_output()
+    lexer_ok = False
+    try:
+        from lexer import lexer
+        lexer.lineno = 1  # Reset
+        lexer.input(code_input)
+        tokens = list(lexer)
+        lexer_ok = True
+        output_lines[-1] = "✅ Lexer"
+    except Exception as e:
+        output_lines[-1] = "❌ Lexer"
+        output_lines.append(f"   Error: {str(e)}")
+    update_output()
+    
+    # Step 2: Parser Check (only if lexer passed)
+    parser_ok = False
+    if lexer_ok:
+        output_lines.append("Parser...")
         update_output()
-        lexer_ok = False
         try:
-            from lexer import lexer
-            lexer.lineno = 1  # Reset
-            lexer.input(code_input)
-            tokens = list(lexer)
-            lexer_ok = True
-            output_lines[-1] = "✅ Lexer"
+            from parser import parser
+            import io
+            from contextlib import redirect_stdout
+            
+            f = io.StringIO()
+            with redirect_stdout(f):
+                ast = parser.parse(code_input)
+            
+            parser_output = f.getvalue()
+            if "SYNTAX ERROR" in parser_output:
+                error_lines = [line.strip() for line in parser_output.split('\n') if "SYNTAX ERROR" in line]
+                syntax_error = "\n".join(error_lines) if error_lines else "Syntax error detected."
+                output_lines[-1] = "❌ Parser"
+                output_lines.append(f"   {syntax_error}")
+            elif ast:
+                parser_ok = True
+                output_lines[-1] = "✅ Parser"
+            else:
+                output_lines[-1] = "❌ Parser"
+                output_lines.append("   Failed to parse")
         except Exception as e:
-            output_lines[-1] = "❌ Lexer"
+            output_lines[-1] = "❌ Parser"
             output_lines.append(f"   Error: {str(e)}")
         update_output()
-        
-        # Step 2: Parser Check (only if lexer passed)
+    else:
         parser_ok = False
-        if lexer_ok:
-            output_lines.append("Parser...")
+    
+    # Step 3: Semantics Check (only if parser passed)
+    semantics_ok = False
+    if lexer_ok and parser_ok and not syntax_error:
+        output_lines.append("Semantics...")
+        update_output()
+        try:
+            f = io.StringIO()
+            with redirect_stdout(f):
+                analyzer = SemanticAnalyzer()
+                analyzer.run(code_input)
+            
+            semantics_output = f.getvalue()
+            semantics_ok = len(analyzer.errors) == 0
+            if semantics_ok:
+                output_lines[-1] = "✅ Semantics"
+                update_output()  # Update to show Semantics check passed
+                # Extract and display CALL results
+                call_results = []
+                for line in semantics_output.split('\n'):
+                    if '[CALL' in line:  # Match [CALL] or [CALL ROLE], [CALL RESOURCE], etc.
+                        call_results.append(line.strip())
+                if call_results:
+                    output_lines.append("")  # Add spacing
+                    for result in call_results:
+                        output_lines.append(result)
+                    update_output()  # Update to show CALL results
+            else:
+                output_lines[-1] = "❌ Semantics"
+                for err in analyzer.errors:
+                    output_lines.append(f"   {err}")
+        except Exception as e:
+            output_lines[-1] = "❌ Semantics"
+            output_lines.append(f"   Error: {str(e)}")
+        update_output()
+    
+    # If all checks passed, show security scan and AI check
+    ai_safety_passed = None  # None = not checked, True = passed, False = failed
+    if lexer_ok and parser_ok and semantics_ok and analyzer:
+        # Security scan
+        scanner = SecurityScanner(analyzer.symtab)
+        risks = scanner.scan()
+        if risks:
+            for r in risks:
+                output_lines.append(f"⚠️ [RISK] Line {r['line']}: {r['message']}")
+            update_output()
+        
+        # AI Policy Safety Check
+        if st.session_state.get('ai_safety_enabled', False):
+            gemini_api_key = os.getenv('GEMINI_API_KEY', '')
+            gemini = get_gemini_helper(api_key=gemini_api_key) if gemini_api_key else None
+        else:
+            gemini = None
+        
+        if gemini:
+            output_lines.append("")
+            output_lines.append("🤖 AI Policy Safety Check...")
             update_output()
             try:
-                from parser import parser
-                import io
-                from contextlib import redirect_stdout
+                safety_result = gemini.check_policy_safety(code_input)
                 
-                f = io.StringIO()
-                with redirect_stdout(f):
-                    ast = parser.parse(code_input)
-                
-                parser_output = f.getvalue()
-                if "SYNTAX ERROR" in parser_output:
-                    error_lines = [line.strip() for line in parser_output.split('\n') if "SYNTAX ERROR" in line]
-                    syntax_error = "\n".join(error_lines) if error_lines else "Syntax error detected."
-                    output_lines[-1] = "❌ Parser"
-                    output_lines.append(f"   {syntax_error}")
-                elif ast:
-                    parser_ok = True
-                    output_lines[-1] = "✅ Parser"
+                if safety_result.get('safe', False):
+                    ai_safety_passed = True
+                    output_lines.append("✅ Policy Check and Executed")
+                    reason = safety_result.get('reason', 'Policy is safe to implement')
+                    if reason:
+                        output_lines.append(f"   Reason: {reason}")
                 else:
-                    output_lines[-1] = "❌ Parser"
-                    output_lines.append("   Failed to parse")
+                    ai_safety_passed = False
+                    output_lines.append("❌ Policy Denied")
+                    reason = safety_result.get('reason', 'Policy is not safe to implement')
+                    if reason:
+                        output_lines.append(f"   Reason: {reason}")
             except Exception as e:
-                output_lines[-1] = "❌ Parser"
-                output_lines.append(f"   Error: {str(e)}")
+                ai_safety_passed = False
+                output_lines.append("⚠️ AI Safety Check Error")
+                output_lines.append(f"   {str(e)}")
             update_output()
         else:
-            parser_ok = False
-        
-        # Step 3: Semantics Check (only if parser passed)
-        semantics_ok = False
-        if lexer_ok and parser_ok and not syntax_error:
-            output_lines.append("Semantics...")
-            update_output()
-            try:
-                f = io.StringIO()
-                with redirect_stdout(f):
-                    analyzer = SemanticAnalyzer()
-                    analyzer.run(code_input)
-                
-                semantics_output = f.getvalue()
-                semantics_ok = len(analyzer.errors) == 0
-                if semantics_ok:
-                    output_lines[-1] = "✅ Semantics"
-                    update_output()  # Update to show Semantics check passed
-                    # Extract and display CALL results
-                    call_results = []
-                    for line in semantics_output.split('\n'):
-                        if '[CALL' in line:  # Match [CALL] or [CALL ROLE], [CALL RESOURCE], etc.
-                            call_results.append(line.strip())
-                    if call_results:
-                        output_lines.append("")  # Add spacing
-                        for result in call_results:
-                            output_lines.append(result)
-                        update_output()  # Update to show CALL results
-                else:
-                    output_lines[-1] = "❌ Semantics"
-                    for err in analyzer.errors:
-                        output_lines.append(f"   {err}")
-            except Exception as e:
-                output_lines[-1] = "❌ Semantics"
-                output_lines.append(f"   Error: {str(e)}")
-            update_output()
-        
-        # If all checks passed, show security scan and AI check
-        ai_safety_passed = None  # None = not checked, True = passed, False = failed
-        if lexer_ok and parser_ok and semantics_ok and analyzer:
-            # Security scan
-            scanner = SecurityScanner(analyzer.symtab)
-            risks = scanner.scan()
-            if risks:
-                for r in risks:
-                    output_lines.append(f"⚠️ [RISK] Line {r['line']}: {r['message']}")
-                update_output()
-            
-            # AI Policy Safety Check
-            if st.session_state.get('ai_safety_enabled', False):
-                gemini_api_key = os.getenv('GEMINI_API_KEY', '')
-                gemini = get_gemini_helper(api_key=gemini_api_key) if gemini_api_key else None
-            else:
-                gemini = None
-            
-            if gemini:
+            # AI Safety Check disabled or not available
+            if not st.session_state.get('ai_safety_enabled', False):
+                ai_safety_passed = None  # Not checked (disabled)
                 output_lines.append("")
-                output_lines.append("🤖 AI Policy Safety Check...")
-                update_output()
-                try:
-                    safety_result = gemini.check_policy_safety(code_input)
-                    
-                    if safety_result.get('safe', False):
-                        ai_safety_passed = True
-                        output_lines.append("✅ Policy Check and Executed")
-                        reason = safety_result.get('reason', 'Policy is safe to implement')
-                        if reason:
-                            output_lines.append(f"   Reason: {reason}")
-                    else:
-                        ai_safety_passed = False
-                        output_lines.append("❌ Policy Denied")
-                        reason = safety_result.get('reason', 'Policy is not safe to implement')
-                        if reason:
-                            output_lines.append(f"   Reason: {reason}")
-                except Exception as e:
-                    ai_safety_passed = False
-                    output_lines.append("⚠️ AI Safety Check Error")
-                    output_lines.append(f"   {str(e)}")
-                update_output()
+                output_lines.append("ℹ️ AI Safety Check: Disabled")
             else:
-                # AI Safety Check disabled or not available
-                if not st.session_state.get('ai_safety_enabled', False):
-                    ai_safety_passed = None  # Not checked (disabled)
-                    output_lines.append("")
-                    output_lines.append("ℹ️ AI Safety Check: Disabled")
-                else:
-                    ai_safety_passed = False
-                    output_lines.append("")
-                    output_lines.append("ℹ️ AI Safety Check: Not available (GEMINI_API_KEY not found in .env)")
-                update_output()
-            
-            # Build summary at the end - only if AI safety passed (or not checked)
-            output_lines.append("")
-            if ai_safety_passed is False:
-                output_lines.append("❌ Build Failed.")
-                output_lines.append("Policy denied by AI safety check. No policies loaded.")
-            else:
-                output_lines.append("✅ Build Succeeded.")
-                output_lines.append(f"Loaded {len(analyzer.symtab.policies)} policies.")
+                ai_safety_passed = False
+                output_lines.append("")
+                output_lines.append("ℹ️ AI Safety Check: Not available (GEMINI_API_KEY not found in .env)")
             update_output()
-
-    # --- PROBLEMS TAB (Structured Errors) ---
-    with tab_problems:
-        if analyzer and analyzer.errors:
-            for err in analyzer.errors:
-                st.error(err)
-        if risks:
-            for risk in risks:
-                st.warning(f"[{risk['level']}] {risk['message']} (Line {risk['line']})")
-        if not (analyzer and analyzer.errors) and not risks:
-            st.info("No problems detected in workspace.")
-
-    # --- TERMINAL TAB (Simulator) ---
-    with tab_terminal:
-        st.markdown("#### Policy Simulator")
         
-        with st.form("sim_form"):
-            c_t1, c_t2 = st.columns(2)
-            with c_t1:
-                sim_role = st.text_input("Role(s)", "Admin", help="Enter single role or comma-separated roles (e.g., 'Admin, Developer')")
-                sim_res = st.text_input("Resource", "DB_Finance")
-            with c_t2:
-                sim_act = st.text_input("Action", "read")
-                sim_time = st.number_input("Time (Hour)", 0, 23, 10)
-            
-            if st.form_submit_button("Test Request"):
-                # Logic
-                # Parse role(s) - support comma-separated roles
-                role_list = [r.strip() for r in sim_role.split(',')] if ',' in sim_role else [sim_role]
-                context = {
-                    'time': {'hour': sim_time, 'minute': 0, 'day': 'Monday', 'month': 1, 'year': 2025},
-                    'user': {'roles': role_list, 'role': role_list[0] if role_list else sim_role, 'id': 1},  # Support both 'roles' (list) and 'role' (single) for compatibility
-                    'resource': {'tag': 'secure', 'owner': 'fin', 'size': 100},
-                    'weather': {'temp': 20, 'snow': 0}
-                }
-                
-                ast = parser.parse(code_input)
-                if ast:
-                    # Extract constants from symbol table if available
-                    constants = {}
-                    if analyzer and hasattr(analyzer, 'symtab'):
-                        constants = analyzer.symtab.constants
-                    evaluator = PolicyEvaluator(context, constants=constants)
-                    statements = ast[1]
-                    access = "DENIED"
-                    reason = "Implicit Deny"
-                    
-                    request = {'action': sim_act, 'resource': sim_res}
-                    
-                    # DENY OVERRIDES ALLOW: Explicit denial rules take precedence
-                    # First pass: Check all DENY rules - if any match, deny access immediately
-                    explicit_deny = False
-                    for stmt in statements:
-                        if stmt[0] == 'POLICY_RULE':
-                            rule = stmt[1]
-                            if rule['type'] == 'DENY':
-                                if evaluator.check_access(rule, request):
-                                    access = "DENIED"
-                                    reason = f"Explicit Deny at Line {rule['line']}"
-                                    explicit_deny = True
-                                    break
-                    
-                    # Only check ALLOW rules if no DENY rule matched
-                    if not explicit_deny:
-                        for stmt in statements:
-                            if stmt[0] == 'POLICY_RULE':
-                                rule = stmt[1]
-                                if rule['type'] == 'ALLOW':
-                                    if evaluator.check_access(rule, request):
-                                        access = "GRANTED"
-                                        reason = f"Matched Line {rule['line']}"
-                                        break
-                    
-                    if access == "GRANTED":
-                        st.success(f"ACCESS {access}: {reason}")
-                    else:
-                        st.error(f"ACCESS {access}: {reason}")
-
-# --- AI ASSISTANT TAB (Available always) ---
-with tab_ai:
-    gemini_api_key = os.getenv('GEMINI_API_KEY', '')
-    gemini = get_gemini_helper(api_key=gemini_api_key) if gemini_api_key else None
-    
-    if not gemini:
-        st.warning("⚠️ Gemini API key not configured. Set GEMINI_API_KEY in your .env file to enable AI features.")
-        st.info("Get your API key at: https://makersuite.google.com/app/apikey")
-    else:
-        st.markdown("#### 🤖 AI-Powered Code Analysis")
-        
-        # Check for errors if code was run
-        if st.session_state.get('run_trigger', False) and "SYNTAX ERROR" in logs:
-            st.markdown("##### 🔍 Error Explanation")
-            error_lines = [line.strip() for line in logs.split('\n') if "SYNTAX ERROR" in line]
-            if error_lines:
-                error_msg = error_lines[0]
-                # Extract line number
-                import re
-                line_match = re.search(r'line (\d+)', error_msg)
-                line_num = int(line_match.group(1)) if line_match else 1
-                
-                with st.spinner("Getting AI explanation..."):
-                    explanation = gemini.explain_error(error_msg, code_input, line_num)
-                    st.markdown(explanation)
-                
-                if st.button("💡 Get Suggested Fix"):
-                    with st.spinner("Generating fix..."):
-                        fixed_code = gemini.suggest_fix(code_input, error_msg)
-                        st.code(fixed_code, language='spl')
-                        if st.button("📋 Use This Fix"):
-                            st.session_state.code = fixed_code
-                            st.rerun()
-        
-        # Security Analysis
-        st.markdown("---")
-        st.markdown("##### 🛡️ Security Analysis")
-        
-        if st.button("🔍 Analyze Security with AI"):
-            with st.spinner("Analyzing code with Gemini..."):
-                analysis = gemini.analyze_security(code_input)
-                
-                if analysis.get('risks'):
-                    st.markdown("**⚠️ Security Risks Found:**")
-                    for risk in analysis['risks']:
-                        st.warning(f"- {risk}")
-                else:
-                    st.success("✅ No security risks detected by AI analysis.")
-                
-                if analysis.get('suggestions'):
-                    st.markdown("**💡 Suggestions:**")
-                    for suggestion in analysis['suggestions']:
-                        st.info(f"- {suggestion}")
-        
-        # Code Generation
-        st.markdown("---")
-        st.markdown("##### ✨ Generate Code from Description")
-        
-        with st.form("generate_code_form"):
-            description = st.text_area(
-                "Describe the policy you want to create:",
-                placeholder="e.g., Create a policy where Admin users can read and write to Finance database during business hours (9 AM to 5 PM)"
-            )
-            if st.form_submit_button("🚀 Generate Code"):
-                with st.spinner("Generating code..."):
-                    generated = gemini.generate_code(description)
-                    st.code(generated, language='spl')
-                    if st.button("📋 Use Generated Code"):
-                        st.session_state.code = generated
-                        st.rerun()
+        # Build summary at the end - only if AI safety passed (or not checked)
+        output_lines.append("")
+        if ai_safety_passed is False:
+            output_lines.append("❌ Build Failed.")
+            output_lines.append("Policy denied by AI safety check. No policies loaded.")
+        else:
+            output_lines.append("✅ Build Succeeded.")
+            output_lines.append(f"Loaded {len(analyzer.symtab.policies)} policies.")
+        update_output()
 
 if not st.session_state.get('run_trigger', False):
-    with tab_console:
-        st.info("Ready. Click ▶ RUN to compile.")
+    st.markdown("#### Compilation Output")
+    st.info("Ready. Click ▶ RUN to compile.")
 
