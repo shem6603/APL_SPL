@@ -33,7 +33,7 @@ def p_statement(p):
                  | resource_def
                  | const_def
                  | call_def
-                 | policy_def
+                 | named_policy_def
                  | rule_def'''
     p[0] = p[1]
 
@@ -94,8 +94,8 @@ def p_call_def(p):
     else:  # CALL ROLE ID, CALL RESOURCE ID, CALL USER ID, CALL CONST ID, CALL POLICY ID
         p[0] = ('CALL_DEF', {'type': p[2], 'name': p[3], 'line': p.lineno(1)})
 
-def p_policy_def(p):
-    'policy_def : POLICY ID LBRACE policy_body RBRACE'
+def p_named_policy_def(p):
+    'named_policy_def : POLICY ID LBRACE policy_body RBRACE'
     # policy_body is a list of statements (can be any statement type)
     p[0] = ('POLICY_DEF', {'name': p[2], 'body': p[4], 'line': p.lineno(1)})
 

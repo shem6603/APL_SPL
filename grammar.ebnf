@@ -106,10 +106,8 @@ policy_body ::= statement*
                 | (* empty *)
 
 (* ============================================
-   POLICY DEFINITIONS (Standalone Rules)
+   POLICY RULES (Standalone Rules)
    ============================================ *)
-policy_def ::= rule_def
-
 rule_def ::= 'IF' condition 'THEN' policy_type action_clause 'ON' resource_clause 'ELSE' policy_type action_clause 'ON' resource_clause
            | policy_type action_clause 'ON' resource_clause ('IF' condition)?
 
