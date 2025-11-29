@@ -8,6 +8,7 @@ This is our group assignment for Analysis of Programming Languages (CIT4004).
 - Athaliah Knight - 1804360
 - Nathalea Evans - 2101707
 - Shemmar Ricketts - 2005329
+- Malik Morgan - 2007793
 
 ## Project Overview
 

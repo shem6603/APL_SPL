@@ -8,6 +8,7 @@ Team Members:
 - Athaliah Knight - 1804360
 - Nathalea Evans - 2101707
 - Shemmar Ricketts - 2005329
+- Malik Morgan - 2007793
 
 To run: streamlit run app.py
 """

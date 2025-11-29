@@ -8,6 +8,7 @@ Team Members:
 - Athaliah Knight - 1804360
 - Nathalea Evans - 2101707
 - Shemmar Ricketts - 2005329
+- Malik Morgan - 2007793
 
 This module defines security risk patterns and scans the symbol table
 for potential vulnerabilities in the defined policies.
