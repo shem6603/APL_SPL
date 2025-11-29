@@ -305,12 +305,11 @@ parser = Parser()
 if __name__ == "__main__":
     pp = pprint.PrettyPrinter(indent=2)
     # Test Data with comments
-    code = """// Finance Department Policy
-ROLE Admin {can: *} // Admin role with all permissions
-RESOURCE DB_Finance {path: "/data/financial"} /* Finance database */
-USER Jane { role: Admin } // Test user
-/* Allow read/write during business hours */
-ALLOW action: read, write ON resource: DB_Finance IF (time.hour > 9)"""
+    code = """
+      ROLE Admin {can: *} 
+      RESOURCE DB_Finance {path: "/data/financial"}
+      USER Jane { role: Admin } 
+      ALLOW action: read, write ON resource: DB_Finance IF (time.hour > 9)"""
     print("--- SPL Parser Test (with comments) ---")
     result = parser.parse(code)
     pp.pprint(result)
