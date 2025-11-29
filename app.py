@@ -416,11 +416,11 @@ if st.session_state.run_trigger:
         output_lines.append("Semantics...")
         update_output()
         try:
-    f = io.StringIO()
-    with redirect_stdout(f):
-        analyzer = SemanticAnalyzer()
-        analyzer.run(code_input)
-        
+            f = io.StringIO()
+            with redirect_stdout(f):
+                analyzer = SemanticAnalyzer()
+                analyzer.run(code_input)
+            
             semantics_output = f.getvalue()
             semantics_ok = len(analyzer.errors) == 0
             if semantics_ok:
@@ -451,16 +451,16 @@ if st.session_state.run_trigger:
         # Security scan
         scanner = SecurityScanner(analyzer.symtab)
         risks = scanner.scan()
-            if risks:
-                for r in risks:
+        if risks:
+            for r in risks:
                 output_lines.append(f"⚠️ [RISK] Line {r['line']}: {r['message']}")
-            update_output()
+        update_output()
         
         # AI Policy Safety Check
         if st.session_state.get('ai_safety_enabled', False):
             gemini_api_key = os.getenv('GEMINI_API_KEY', '')
             gemini = get_gemini_helper(api_key=gemini_api_key) if gemini_api_key else None
-            else:
+        else:
             gemini = None
         
         if gemini:
@@ -493,7 +493,7 @@ if st.session_state.run_trigger:
                 ai_safety_passed = None  # Not checked (disabled)
                 output_lines.append("")
                 output_lines.append("ℹ️ AI Safety Check: Disabled")
-        else:
+            else:
                 ai_safety_passed = False
                 output_lines.append("")
                 output_lines.append("ℹ️ AI Safety Check: Not available (GEMINI_API_KEY not found in .env)")
@@ -511,5 +511,5 @@ if st.session_state.run_trigger:
 
 if not st.session_state.get('run_trigger', False):
     st.markdown("#### Compilation Output")
-        st.info("Ready. Click ▶ RUN to compile.")
+    st.info("Ready. Click ▶ RUN to compile.")
 
