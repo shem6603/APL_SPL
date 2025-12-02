@@ -172,140 +172,71 @@ example_option = file_labels[selected_label]
 
 # Example Code Templates
 examples = {
-    "policy.spl": """// Basic Policy Demo - Simple access control policies
+    "policy.spl": """// Basic Policy Demo
 
-// Define roles with permissions
 ROLE Admin {can: *}
 ROLE Developer {can: read, write}
-ROLE Viewer {can: read}
 
-// Define resources with attributes
-RESOURCE DB_Finance {path: "/data/financial", owner: "Finance", sensitivity: "high"}
-RESOURCE DB_Logs {path: "/var/logs", owner: "IT", sensitivity: "low"}
+RESOURCE DB_Finance {path: "/data/financial"}
 
-// Assign roles to users
-USER Jane { role: Admin, Developer }
-USER Bob { role: Viewer }
+USER Jane { role: Admin }
 
-// Define constants for business hours
 CONST START_HOUR = 9
 CONST END_HOUR = 17
 
-// Simple policy: Allow read/write during business hours
 ALLOW action: read, write ON resource: DB_Finance IF (time.hour >= START_HOUR AND time.hour <= END_HOUR)
 
-// Policy with day restrictions
-ALLOW action: read ON resource: DB_Logs IF (time.day != "Saturday" AND time.day != "Sunday")
+IF (time.hour >= START_HOUR) THEN ALLOW action: write ON resource: DB_Finance ELSE DENY action: write ON resource: DB_Finance
 
-// Conditional policy using IF-THEN-ELSE
-// During business hours: allow write, otherwise deny
-IF (time.hour >= START_HOUR AND time.hour <= END_HOUR) THEN ALLOW action: write ON resource: DB_Finance ELSE DENY action: write ON resource: DB_Finance
-
-// Query what we've defined
 CALL ROLE
-CALL RESOURCE
-CALL USER""",
+CALL RESOURCE""",
     
-    "conflict.spl": """// Policy Conflict Demo - Conflicting rules on same resource
-// NOTE: DENY rules override ALLOW rules (Deny overrides Allow)
+    "conflict.spl": """// Policy Conflict Demo - DENY overrides ALLOW
 
-// Setup roles and resources
 ROLE Developer {can: read, write}
-ROLE Manager {can: *}
-RESOURCE Logs {path: "/var/logs", owner: "IT"}
+RESOURCE Logs {path: "/var/logs"}
 
-// User with Developer role
 USER Bob { role: Developer }
 
-// Time constants
-CONST MORNING = 9
 CONST NOON = 12
-CONST EVENING = 18
 
-// CONFLICT 1: Overlapping time windows
-// At hour 10: ALLOW matches (10 > 9) AND DENY matches (10 < 12)
-// Result: DENY overrides ALLOW, so access is DENIED
-ALLOW action: write ON resource: Logs IF (time.hour > MORNING)
+ALLOW action: write ON resource: Logs IF (time.hour > 9)
 DENY action: write ON resource: Logs IF (time.hour < NOON)
 
-// CONFLICT 2: Same action, different conditions
-// On Monday at hour 10: ALLOW matches (10 < 18) AND DENY matches (Monday)
-// Result: DENY overrides ALLOW, so access is DENIED
-ALLOW action: read ON resource: Logs IF (time.hour < EVENING)
-DENY action: read ON resource: Logs IF (time.day == "Monday")
+CALL RESOURCE Logs""",
 
-// Query to see conflicts
-CALL RESOURCE Logs
-CALL USER Bob""",
+    "risk.spl": """// Security Risk Demo
 
-    "risk.spl": """// Security Risk Demo - Dangerous policy patterns
-
-// Limited role
 ROLE Guest {can: read}
-ROLE Admin {can: *}
+RESOURCE DB_Finance {path: "/data/financial"}
 
-// Sensitive resource
-RESOURCE DB_Finance {path: "/data/financial", sensitivity: "high", owner: "Finance"}
-
-// User with limited permissions
 USER Alice { role: Guest }
 
-// RISK 1: Wildcard action overrides role restrictions
-// Guest role only allows 'read', but this allows ALL actions
 ALLOW action: * ON resource: DB_Finance IF (time.hour > 0)
-
-// RISK 2: Overly permissive time condition
-// Allows access at any hour (condition always true)
 ALLOW action: write ON resource: DB_Finance IF (time.hour >= 0)
-
-// RISK 3: No time restrictions on sensitive resource
 ALLOW action: read ON resource: DB_Finance
 
-// Query to identify risks
 CALL ROLE
-CALL USER Alice
-CALL RESOURCE DB_Finance""",
+CALL USER Alice""",
     
-    "scope.spl": """// Scope and Binding Demo - Global vs Policy scope
+    "scope.spl": """// Scope Demo - Global vs Policy scope
 
-// GLOBAL SCOPE - accessible everywhere
 RESOURCE DB_Global {path: "/global"}
 ROLE Admin {can: *}
 CONST GLOBAL_CONST = 100
 
 POLICY FinancePolicy {
-    // POLICY SCOPE - local to this policy block
     RESOURCE DB_Local {path: "/local"}
-    ROLE FinanceRole {can: read, write}
     CONST LOCAL_CONST = 200
     
-    // Can access global scope from inside policy
     ALLOW action: read ON resource: DB_Global IF (time.hour > GLOBAL_CONST)
-    
-    // Can use local scope within policy
     ALLOW action: read ON resource: DB_Local IF (time.hour > LOCAL_CONST)
     
-    // Query shows both global and local resources
     CALL RESOURCE
 }
 
-POLICY ITPolicy {
-    // Another policy scope - separate from FinancePolicy
-    RESOURCE DB_IT {path: "/it"}
-    CONST IT_CONST = 300
-    
-    // Can access global scope
-    ALLOW action: read ON resource: DB_Global IF (time.hour > GLOBAL_CONST)
-    
-    // Can use this policy's local scope
-    ALLOW action: write ON resource: DB_IT IF (time.hour > IT_CONST)
-}
-
-// Back in GLOBAL SCOPE
-// DB_Local and DB_IT are NOT accessible here (they're in policy scope)
 ALLOW action: read ON resource: DB_Global IF (time.hour > 9)
 
-// Query shows only global resources
 CALL RESOURCE"""
 }
 
