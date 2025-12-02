@@ -225,6 +225,40 @@ Examples:
             'details': text
         }
     
+    def explain_step(self, step_name: str, step_result: str, code_snippet: str = "") -> str:
+        """
+        Get a short LLM explanation of an execution step.
+        
+        Args:
+            step_name: Name of the step (e.g., "Lexer", "Parser", "Semantics")
+            step_result: Result of the step (e.g., "✅ Passed", "❌ Failed")
+            code_snippet: Optional code snippet relevant to the step
+            
+        Returns:
+            Short explanation (max 50 words)
+        """
+        prompt = f"""Explain what happened in this SPL compilation step in ONE SHORT SENTENCE (max 15 words):
+
+Step: {step_name}
+Result: {step_result}
+{f'Code: {code_snippet[:200]}' if code_snippet else ''}
+
+Provide only a brief explanation of what this step does and its result."""
+        
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
+            explanation = response.text.strip()
+            # Limit to 50 words
+            words = explanation.split()
+            if len(words) > 50:
+                explanation = ' '.join(words[:50]) + '...'
+            return explanation
+        except Exception as e:
+            return f"Step {step_name}: {step_result}"
+    
     def generate_code(self, description: str) -> str:
         """
         Generate SPL code from a natural language description.

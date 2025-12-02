@@ -127,9 +127,19 @@ with st.sidebar:
     # Initialize toggle state if not exists
     if 'ai_safety_enabled' not in st.session_state:
         st.session_state.ai_safety_enabled = False
+    if 'step_explanations_enabled' not in st.session_state:
+        st.session_state.step_explanations_enabled = True
     
     # Get API key from .env file
     gemini_api_key = os.getenv('GEMINI_API_KEY', '')
+    
+    # Toggle button for Step Explanations
+    step_explanations_enabled = st.toggle(
+        "Explain Execution Steps",
+        value=st.session_state.step_explanations_enabled,
+        help="Show LLM explanations for each compilation step"
+    )
+    st.session_state.step_explanations_enabled = step_explanations_enabled
     
     # Toggle button for AI Safety Check
     ai_safety_enabled = st.toggle(
@@ -361,6 +371,10 @@ if st.session_state.run_trigger:
         else:
             output_placeholder.markdown(f'<div class="console-box">{"<br>".join(output_lines)}</div>', unsafe_allow_html=True)
     
+    # Get Gemini helper for step explanations
+    gemini_api_key = os.getenv('GEMINI_API_KEY', '')
+    gemini = get_gemini_helper(api_key=gemini_api_key) if gemini_api_key and st.session_state.get('step_explanations_enabled', True) else None
+    
     # Step 1: Lexer Check
     output_lines.append("Lexer...")
     update_output()
@@ -372,9 +386,21 @@ if st.session_state.run_trigger:
         tokens = list(lexer)
         lexer_ok = True
         output_lines[-1] = "✅ Lexer"
+        if gemini:
+            try:
+                explanation = gemini.explain_step("Lexer", "✅ Passed", code_input[:200])
+                output_lines.append(f"   💡 {explanation}")
+            except:
+                pass
     except Exception as e:
         output_lines[-1] = "❌ Lexer"
         output_lines.append(f"   Error: {str(e)}")
+        if gemini:
+            try:
+                explanation = gemini.explain_step("Lexer", "❌ Failed", code_input[:200])
+                output_lines.append(f"   💡 {explanation}")
+            except:
+                pass
     update_output()
     
     # Step 2: Parser Check (only if lexer passed)
@@ -397,15 +423,39 @@ if st.session_state.run_trigger:
                 syntax_error = "\n".join(error_lines) if error_lines else "Syntax error detected."
                 output_lines[-1] = "❌ Parser"
                 output_lines.append(f"   {syntax_error}")
+                if gemini:
+                    try:
+                        explanation = gemini.explain_step("Parser", "❌ Failed", code_input[:200])
+                        output_lines.append(f"   💡 {explanation}")
+                    except:
+                        pass
             elif ast:
                 parser_ok = True
                 output_lines[-1] = "✅ Parser"
+                if gemini:
+                    try:
+                        explanation = gemini.explain_step("Parser", "✅ Passed", code_input[:200])
+                        output_lines.append(f"   💡 {explanation}")
+                    except:
+                        pass
             else:
                 output_lines[-1] = "❌ Parser"
                 output_lines.append("   Failed to parse")
+                if gemini:
+                    try:
+                        explanation = gemini.explain_step("Parser", "❌ Failed", code_input[:200])
+                        output_lines.append(f"   💡 {explanation}")
+                    except:
+                        pass
         except Exception as e:
             output_lines[-1] = "❌ Parser"
             output_lines.append(f"   Error: {str(e)}")
+            if gemini:
+                try:
+                    explanation = gemini.explain_step("Parser", "❌ Failed", code_input[:200])
+                    output_lines.append(f"   💡 {explanation}")
+                except:
+                    pass
         update_output()
     else:
         parser_ok = False
@@ -425,6 +475,12 @@ if st.session_state.run_trigger:
             semantics_ok = len(analyzer.errors) == 0
             if semantics_ok:
                 output_lines[-1] = "✅ Semantics"
+                if gemini:
+                    try:
+                        explanation = gemini.explain_step("Semantics", "✅ Passed", code_input[:200])
+                        output_lines.append(f"   💡 {explanation}")
+                    except:
+                        pass
                 update_output()  # Update to show Semantics check passed
                 # Extract and display CALL results
                 call_results = []
@@ -440,35 +496,56 @@ if st.session_state.run_trigger:
                 output_lines[-1] = "❌ Semantics"
                 for err in analyzer.errors:
                     output_lines.append(f"   {err}")
+                if gemini:
+                    try:
+                        explanation = gemini.explain_step("Semantics", "❌ Failed", code_input[:200])
+                        output_lines.append(f"   💡 {explanation}")
+                    except:
+                        pass
         except Exception as e:
             output_lines[-1] = "❌ Semantics"
             output_lines.append(f"   Error: {str(e)}")
+            if gemini:
+                try:
+                    explanation = gemini.explain_step("Semantics", "❌ Failed", code_input[:200])
+                    output_lines.append(f"   💡 {explanation}")
+                except:
+                    pass
         update_output()
     
     # If all checks passed, show security scan and AI check
     ai_safety_passed = None  # None = not checked, True = passed, False = failed
     if lexer_ok and parser_ok and semantics_ok and analyzer:
         # Security scan
+        output_lines.append("Security Scan...")
+        update_output()
         scanner = SecurityScanner(analyzer.symtab)
         risks = scanner.scan()
         if risks:
             for r in risks:
                 output_lines.append(f"⚠️ [RISK] Line {r['line']}: {r['message']}")
+        else:
+            output_lines.append("✅ No security risks found")
+        if gemini:
+            try:
+                explanation = gemini.explain_step("Security Scan", "✅ Completed", code_input[:200])
+                output_lines.append(f"   💡 {explanation}")
+            except:
+                pass
         update_output()
         
         # AI Policy Safety Check
         if st.session_state.get('ai_safety_enabled', False):
-            gemini_api_key = os.getenv('GEMINI_API_KEY', '')
-            gemini = get_gemini_helper(api_key=gemini_api_key) if gemini_api_key else None
+            gemini_safety = get_gemini_helper(api_key=gemini_api_key) if gemini_api_key else None
         else:
-            gemini = None
+            gemini_safety = None
         
-        if gemini:
+        if gemini_safety:
             output_lines.append("")
             output_lines.append("🤖 AI Policy Safety Check...")
             update_output()
             try:
-                safety_result = gemini.check_policy_safety(code_input)
+                safety_result = gemini_safety.check_policy_safety(code_input)
                 
                 if safety_result.get('safe', False):
                     ai_safety_passed = True
