@@ -373,7 +373,14 @@ if st.session_state.run_trigger:
     
     # Get Gemini helper for step explanations
     gemini_api_key = os.getenv('GEMINI_API_KEY', '')
-    gemini = get_gemini_helper(api_key=gemini_api_key) if gemini_api_key and st.session_state.get('step_explanations_enabled', True) else None
+    step_explanations_enabled = st.session_state.get('step_explanations_enabled', True)
+    gemini = None
+    if step_explanations_enabled and gemini_api_key:
+        try:
+            gemini = get_gemini_helper(api_key=gemini_api_key)
+        except Exception as e:
+            # If helper creation fails, continue without explanations
+            gemini = None
     
     # Step 1: Lexer Check
     output_lines.append("Lexer...")
@@ -389,18 +396,21 @@ if st.session_state.run_trigger:
         if gemini:
             try:
                 explanation = gemini.explain_step("Lexer", "✅ Passed", code_input[:200])
-                output_lines.append(f"   💡 {explanation}")
-            except:
-                pass
+                if explanation:
+                    output_lines.append(f"   💡 {explanation}")
+            except Exception as e:
+                # Show error in debug mode, but don't break the flow
+                output_lines.append(f"   ⚠️ Explanation unavailable")
     except Exception as e:
         output_lines[-1] = "❌ Lexer"
         output_lines.append(f"   Error: {str(e)}")
         if gemini:
             try:
                 explanation = gemini.explain_step("Lexer", "❌ Failed", code_input[:200])
-                output_lines.append(f"   💡 {explanation}")
-            except:
-                pass
+                if explanation:
+                    output_lines.append(f"   💡 {explanation}")
+            except Exception as e:
+                output_lines.append(f"   ⚠️ Explanation unavailable")
     update_output()
     
     # Step 2: Parser Check (only if lexer passed)
@@ -426,36 +436,40 @@ if st.session_state.run_trigger:
                 if gemini:
                     try:
                         explanation = gemini.explain_step("Parser", "❌ Failed", code_input[:200])
-                        output_lines.append(f"   💡 {explanation}")
-                    except:
-                        pass
+                        if explanation:
+                            output_lines.append(f"   💡 {explanation}")
+                    except Exception as e:
+                        output_lines.append(f"   ⚠️ Explanation unavailable")
             elif ast:
                 parser_ok = True
                 output_lines[-1] = "✅ Parser"
                 if gemini:
                     try:
                         explanation = gemini.explain_step("Parser", "✅ Passed", code_input[:200])
-                        output_lines.append(f"   💡 {explanation}")
-                    except:
-                        pass
+                        if explanation:
+                            output_lines.append(f"   💡 {explanation}")
+                    except Exception as e:
+                        output_lines.append(f"   ⚠️ Explanation unavailable")
             else:
                 output_lines[-1] = "❌ Parser"
                 output_lines.append("   Failed to parse")
                 if gemini:
                     try:
                         explanation = gemini.explain_step("Parser", "❌ Failed", code_input[:200])
-                        output_lines.append(f"   💡 {explanation}")
-                    except:
-                        pass
+                        if explanation:
+                            output_lines.append(f"   💡 {explanation}")
+                    except Exception as e:
+                        output_lines.append(f"   ⚠️ Explanation unavailable")
         except Exception as e:
             output_lines[-1] = "❌ Parser"
             output_lines.append(f"   Error: {str(e)}")
             if gemini:
                 try:
                     explanation = gemini.explain_step("Parser", "❌ Failed", code_input[:200])
-                    output_lines.append(f"   💡 {explanation}")
-                except:
-                    pass
+                    if explanation:
+                        output_lines.append(f"   💡 {explanation}")
+                except Exception as e:
+                    output_lines.append(f"   ⚠️ Explanation unavailable")
         update_output()
     else:
         parser_ok = False
@@ -478,9 +492,10 @@ if st.session_state.run_trigger:
                 if gemini:
                     try:
                         explanation = gemini.explain_step("Semantics", "✅ Passed", code_input[:200])
-                        output_lines.append(f"   💡 {explanation}")
-                    except:
-                        pass
+                        if explanation:
+                            output_lines.append(f"   💡 {explanation}")
+                    except Exception as e:
+                        output_lines.append(f"   ⚠️ Explanation unavailable")
                 update_output()  # Update to show Semantics check passed
                 # Extract and display CALL results
                 call_results = []
@@ -499,18 +514,20 @@ if st.session_state.run_trigger:
                 if gemini:
                     try:
                         explanation = gemini.explain_step("Semantics", "❌ Failed", code_input[:200])
-                        output_lines.append(f"   💡 {explanation}")
-                    except:
-                        pass
+                        if explanation:
+                            output_lines.append(f"   💡 {explanation}")
+                    except Exception as e:
+                        output_lines.append(f"   ⚠️ Explanation unavailable")
         except Exception as e:
             output_lines[-1] = "❌ Semantics"
             output_lines.append(f"   Error: {str(e)}")
             if gemini:
                 try:
                     explanation = gemini.explain_step("Semantics", "❌ Failed", code_input[:200])
-                    output_lines.append(f"   💡 {explanation}")
-                except:
-                    pass
+                    if explanation:
+                        output_lines.append(f"   💡 {explanation}")
+                except Exception as e:
+                    output_lines.append(f"   ⚠️ Explanation unavailable")
         update_output()
     
     # If all checks passed, show security scan and AI check
@@ -529,9 +546,10 @@ if st.session_state.run_trigger:
         if gemini:
             try:
                 explanation = gemini.explain_step("Security Scan", "✅ Completed", code_input[:200])
-                output_lines.append(f"   💡 {explanation}")
-            except:
-                pass
+                if explanation:
+                    output_lines.append(f"   💡 {explanation}")
+            except Exception as e:
+                output_lines.append(f"   ⚠️ Explanation unavailable")
         update_output()
         
         # AI Policy Safety Check

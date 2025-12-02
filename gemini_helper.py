@@ -251,13 +251,18 @@ Provide only a brief explanation of what this step does and its result."""
                 contents=prompt
             )
             explanation = response.text.strip()
+            
+            if not explanation:
+                return f"Step {step_name} completed with {step_result.lower()}"
+            
             # Limit to 50 words
             words = explanation.split()
             if len(words) > 50:
                 explanation = ' '.join(words[:50]) + '...'
             return explanation
         except Exception as e:
-            return f"Step {step_name}: {step_result}"
+            # Return a fallback explanation instead of failing silently
+            return f"Step {step_name} completed with {step_result.lower()}"
     
     def generate_code(self, description: str) -> str:
         """
